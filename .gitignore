@@ -1,0 +1,7 @@
+smtpd-filter-addheader
+smtpd-filter-addheader.exe
+notes
+cruft
+*.core
+*.log
+*postactivate
