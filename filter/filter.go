@@ -10,10 +10,11 @@ import (
 	"strings"
 )
 
-const Version = "0.0.1"
+const Version = "0.0.2"
 
-const FID_EVENT = 4
+const FID_NAME = 4
 const FID_SID = 5
+const FID_TOKEN = 6
 
 var Verbose bool
 
@@ -182,8 +183,8 @@ func (f *Filter) Run() {
 		}
 		switch atoms[0] {
 		case "report":
-			name := atoms[4]
-			sid := atoms[5]
+			name := atoms[FID_NAME]
+			sid := atoms[FID_SID]
 			switch name {
 			case "link-connect":
 				requireArgs(name, atoms, 10)
@@ -216,9 +217,9 @@ func (f *Filter) Run() {
 				f.txRollback(name, sid, atoms[6])
 			}
 		case "filter":
-			phase := atoms[4]
-			sid := atoms[5]
-			token := atoms[6]
+			phase := atoms[FID_NAME]
+			sid := atoms[FID_SID]
+			token := atoms[FID_TOKEN]
 			switch phase {
 			case "data-line":
 				requireArgs(phase, atoms, 8)
