@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const Version = "0.0.3"
+const Version = "0.0.4"
 
 const FID_NAME = 4
 const FID_SID = 5
