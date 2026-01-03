@@ -31,23 +31,39 @@ POSSIBILITY OF SUCH DAMAGE.
 package cmd
 
 import (
-	"os"
-
+	"fmt"
+	"github.com/rstms/smtpd-filter-addheader/filter"
 	"github.com/spf13/cobra"
+	"os"
+	"strings"
 )
 
 var cfgFile string
 
 var rootCmd = &cobra.Command{
 	Version: "0.0.1",
-	Use:     "smtpd-filter-addheader",
-	Short:   "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Use:     "smtpd-filter-addheader HEADER [HEADER...]",
+	Short:   "smtpd filter for adding static email header lines",
+	Long: `
+smtpd-filter-addheader modifies all filtered messages by adding the headers
+provided as command line arguments.
+Header arguments are formatted as KEY=VALUE
+At least one header must be provided
+`,
+	Args: cobra.MinimumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		filter := filter.NewFilter(os.Stdin, os.Stdout)
+		for _, header := range args {
+			key, value, ok := strings.Cut(header, "=")
+			if !ok {
+				cobra.CheckErr(fmt.Errorf("invalid header arg: %s", header))
+			}
+			filter.AddHeader(key, value)
+		}
+		filter.Run()
+	},
 }
+
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {

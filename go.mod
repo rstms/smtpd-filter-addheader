@@ -3,6 +3,7 @@ module github.com/rstms/smtpd-filter-addheader
 go 1.25.4
 
 require (
+	github.com/poolpOrg/OpenSMTPD-framework v0.1.9
 	github.com/rstms/go-common v0.2.71
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0

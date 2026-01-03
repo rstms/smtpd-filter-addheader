@@ -1,0 +1,2 @@
+smtpd_filter_addheader:
+  verbose: true
