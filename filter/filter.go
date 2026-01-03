@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -63,16 +64,17 @@ type Callback struct {
 }
 
 type Filter struct {
-	Name      string
-	Headers   map[string]string
-	Sessions  map[string]*Session
-	Protocol  string
-	Subsystem string
-	reports   []string
-	filters   []string
-	verbose   bool
-	input     *bufio.Scanner
-	output    io.Writer
+	Name              string
+	Headers           map[string]string
+	RecipientPatterns []*regexp.Regexp
+	Sessions          map[string]*Session
+	Protocol          string
+	Subsystem         string
+	reports           []string
+	filters           []string
+	verbose           bool
+	input             *bufio.Scanner
+	output            io.Writer
 }
 
 func NewFilter(reader io.Reader, writer io.Writer) *Filter {
@@ -81,12 +83,13 @@ func NewFilter(reader io.Reader, writer io.Writer) *Filter {
 		log.Fatal(Fatal(err))
 	}
 	f := Filter{
-		Name:     filepath.Base(executable),
-		verbose:  ViperGetBool("verbose"),
-		Headers:  make(map[string]string),
-		Sessions: make(map[string]*Session),
-		input:    bufio.NewScanner(reader),
-		output:   writer,
+		Name:              filepath.Base(executable),
+		verbose:           ViperGetBool("verbose"),
+		Headers:           make(map[string]string),
+		Sessions:          make(map[string]*Session),
+		RecipientPatterns: []*regexp.Regexp{},
+		input:             bufio.NewScanner(reader),
+		output:            writer,
 		reports: []string{
 			"link-connect",
 			"link-disconnect",
@@ -108,6 +111,14 @@ func NewFilter(reader io.Reader, writer io.Writer) *Filter {
 
 func (f *Filter) AddHeader(key, value string) {
 	f.Headers[key] = value
+}
+
+func (f *Filter) AddRecipientPattern(pattern string) {
+	p, err := regexp.Compile(pattern)
+	if err != nil {
+		log.Fatal(Fatal(err))
+	}
+	f.RecipientPatterns = append(f.RecipientPatterns, p)
 }
 
 func (f *Filter) Config() {
@@ -172,7 +183,26 @@ func lastAtom(line string, atoms []string, field int) string {
 }
 
 func (f *Filter) Run() {
-	log.Printf("Starting %s v%s uid=%d gid=%d verbose=%v\n", f.Name, Version, os.Getuid(), os.Getgid(), f.verbose)
+	log.Printf("Starting %s v%s\n", f.Name, Version)
+	for _, header := range ViperGetStringSlice("header") {
+		key, value, ok := strings.Cut(header, "=")
+		if !ok {
+			log.Fatal(Fatalf("invalid header config: %s", header))
+		}
+		f.AddHeader(key, value)
+	}
+	for _, pattern := range ViperGetStringSlice("recipient") {
+		f.AddRecipientPattern(pattern)
+	}
+	if f.verbose {
+		log.Printf("pid=%d uid=%d gid=%d\n", os.Getpid(), os.Getuid(), os.Getgid())
+		for key, value := range f.Headers {
+			log.Printf("header: '%s: %s'\n", key, value)
+		}
+		for _, pattern := range f.RecipientPatterns {
+			log.Printf("recipient pattern: `%v`\n", pattern)
+		}
+	}
 	f.Config()
 	f.Register()
 	for f.input.Scan() {
@@ -365,6 +395,31 @@ func (f *Filter) sessionTimeout(name, sid string) {
 	delete(f.Sessions, sid)
 }
 
+func (f *Filter) recipientMatches(name string, message *Message) bool {
+	// if no patterns exist, add the header unconditionally
+	if len(f.RecipientPatterns) == 0 {
+		return true
+	}
+	// if patterns exist, only add the header if a recipient address matches
+	for _, recipient := range message.To {
+		if f.verbose {
+			log.Printf("%s.%s: checking recipient patterns for: %s\n", f.Name, name, recipient)
+		}
+		for _, pattern := range f.RecipientPatterns {
+			if pattern.MatchString(recipient) {
+				if f.verbose {
+					log.Printf("%s.%s: recipient match found: %s\n", f.Name, name, recipient)
+				}
+				return true
+			}
+		}
+		if f.verbose {
+			log.Printf("%s.%s: no match for recipient: %s\n", f.Name, name, recipient)
+		}
+	}
+	return false
+}
+
 func (f *Filter) dataLine(name, sid, token, line string) {
 	if f.verbose {
 		log.Printf("%s.%s: sid=%s token=%s line=%s\n", f.Name, name, sid, token, line)
@@ -376,12 +431,14 @@ func (f *Filter) dataLine(name, sid, token, line string) {
 		// if at end of message header lines
 		if strings.TrimSpace(line) == "" {
 			// add filter headers
-			lines = []string{}
-			for key, value := range f.Headers {
-				log.Printf("%s.%s: adding header %s.%s\n", f.Name, name, key, value)
-				lines = append(lines, fmt.Sprintf("%s: %s", key, value))
+			if f.recipientMatches(name, message) {
+				lines = []string{}
+				for key, value := range f.Headers {
+					log.Printf("%s.%s: adding header '%s: %s'\n", f.Name, name, key, value)
+					lines = append(lines, fmt.Sprintf("%s: %s", key, value))
+				}
+				lines = append(lines, line)
 			}
-			lines = append(lines, line)
 			// mark end of header
 			message.InHeader = false
 		}

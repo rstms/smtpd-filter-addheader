@@ -1,2 +1,7 @@
 smtpd_filter_addheader:
   verbose: true
+  recipient: 
+    - 'howdy.*'
+    - 'foo.*'
+    - "^touser.*@"
+

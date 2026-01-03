@@ -31,11 +31,9 @@ POSSIBILITY OF SUCH DAMAGE.
 package cmd
 
 import (
-	"fmt"
 	"github.com/rstms/smtpd-filter-addheader/filter"
 	"github.com/spf13/cobra"
 	"os"
-	"strings"
 )
 
 var cfgFile string
@@ -50,16 +48,14 @@ provided as command line arguments.
 Header arguments are formatted as KEY=VALUE
 At least one header must be provided
 `,
-	Args: cobra.MinimumNArgs(1),
+	Args: cobra.MinimumNArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
-		filter := filter.NewFilter(os.Stdin, os.Stdout)
-		for _, header := range args {
-			key, value, ok := strings.Cut(header, "=")
-			if !ok {
-				cobra.CheckErr(fmt.Errorf("invalid header arg: %s", header))
-			}
-			filter.AddHeader(key, value)
+		headers := ViperGetStringSlice("header")
+		for _, arg := range args {
+			headers = append(headers, arg)
 		}
+		ViperSet("header", headers)
+		filter := filter.NewFilter(os.Stdin, os.Stdout)
 		filter.Run()
 	},
 }
@@ -72,4 +68,6 @@ func Execute() {
 }
 func init() {
 	CobraInit(rootCmd)
+	OptionStringSlice(rootCmd, "header", "H", []string{}, "header to add (key=value)")
+	OptionStringSlice(rootCmd, "recipient", "R", []string{}, "recipient match regex")
 }
