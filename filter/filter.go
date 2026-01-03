@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const Version = "0.0.2"
+const Version = "0.0.3"
 
 const FID_NAME = 4
 const FID_SID = 5
