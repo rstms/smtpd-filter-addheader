@@ -39,7 +39,7 @@ import (
 var cfgFile string
 
 var rootCmd = &cobra.Command{
-	Version: "0.0.4",
+	Version: "0.0.5",
 	Use:     "smtpd-filter-addheader HEADER [HEADER...]",
 	Short:   "smtpd filter for adding static email header lines",
 	Long: `
