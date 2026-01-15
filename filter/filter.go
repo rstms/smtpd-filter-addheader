@@ -80,7 +80,7 @@ type Filter struct {
 func NewFilter(reader io.Reader, writer io.Writer) *Filter {
 	executable, err := os.Executable()
 	if err != nil {
-		log.Fatal(Fatal(err))
+		log.Fatal(Fatalf("NewFilter failed with: %v", err))
 	}
 	f := Filter{
 		Name:              filepath.Base(executable),
@@ -116,7 +116,7 @@ func (f *Filter) AddHeader(key, value string) {
 func (f *Filter) AddRecipientPattern(pattern string) {
 	p, err := regexp.Compile(pattern)
 	if err != nil {
-		log.Fatal(Fatal(err))
+		Warning("AddRecipientPattern(%s) failed with: %v", pattern, err)
 	}
 	f.RecipientPatterns = append(f.RecipientPatterns, p)
 }
@@ -129,7 +129,7 @@ func (f *Filter) Config() {
 		}
 		fields := strings.Split(line, "|")
 		if len(fields) < 2 {
-			log.Fatal(Fatalf("unexpected config line: %s", line))
+			Warning("Config: unexpected line: %s", line)
 		}
 		switch fields[1] {
 		case "protocol":
@@ -142,9 +142,9 @@ func (f *Filter) Config() {
 	}
 	err := f.input.Err()
 	if err != nil {
-		log.Fatal(Fatal(err))
+		log.Fatalf("Config: input scanner failed with: %v", err)
 	}
-	log.Fatal(Fatalf("config failure"))
+	log.Fatalf("Config: unexpected EOF")
 }
 
 func (f *Filter) Register() {
@@ -153,7 +153,7 @@ func (f *Filter) Register() {
 		log.Printf("%s.Register: %s\n", f.Name, line)
 		_, err := fmt.Fprintf(f.output, "%s\n", line)
 		if err != nil {
-			log.Fatal(Fatal(err))
+			Warning("Register: report output failed with: %v", err)
 		}
 	}
 	for _, name := range f.filters {
@@ -163,7 +163,7 @@ func (f *Filter) Register() {
 		}
 		_, err := fmt.Fprintf(f.output, "%s\n", line)
 		if err != nil {
-			log.Fatal(Fatal(err))
+			Warning("Register: filter output failed with: %v", err)
 		}
 	}
 	line := fmt.Sprintf("register|ready")
@@ -172,15 +172,17 @@ func (f *Filter) Register() {
 	}
 	_, err := fmt.Fprintf(f.output, "%s\n", line)
 	if err != nil {
-		log.Fatal(Fatal(err))
+		Warning("Register: ready output failed with: %v", err)
 	}
 
 }
 
-func requireArgs(name string, atoms []string, count int) {
+func requireArgs(name string, atoms []string, count int) bool {
 	if len(atoms) < count {
-		log.Fatal(Fatalf("%s: expected %d args, got '%v'", name, count, atoms))
+		Warning("%s: expected %d args, got '%v'", name, count, atoms)
+		return false
 	}
+	return true
 }
 
 func lastAtom(line string, atoms []string, field int) string {
@@ -219,76 +221,93 @@ func (f *Filter) Run() {
 		line := f.input.Text()
 		atoms := strings.Split(line, "|")
 		if len(atoms) < 6 {
-			log.Fatal(Fatalf("missing atoms: %s", line))
-		}
-		switch atoms[0] {
-		case "report":
-			name := atoms[FID_NAME]
-			sid := atoms[FID_SID]
-			switch name {
-			case "link-connect":
-				requireArgs(name, atoms, 10)
-				f.linkConnect(name, sid, atoms[6], atoms[7], atoms[8], atoms[9])
-			case "link-disconnect":
-				f.linkDisconnect(name, sid)
-			case "link-auth":
-				requireArgs(name, atoms, 8)
-				f.linkAuth(name, sid, atoms[6], atoms[7])
-			case "tx-reset":
-				requireArgs(name, atoms, 7)
-				f.txReset(name, sid, atoms[6])
-			case "tx-begin":
-				requireArgs(name, atoms, 7)
-				f.txBegin(name, sid, atoms[6])
-			case "tx-mail":
-				requireArgs(name, atoms, 9)
-				f.txMail(name, sid, atoms[6], atoms[7], atoms[8])
-			case "tx-rcpt":
-				requireArgs(name, atoms, 9)
-				f.txRcpt(name, sid, atoms[6], atoms[7], atoms[8])
-			case "tx-data":
-				requireArgs(name, atoms, 8)
-				f.txData(name, sid, atoms[6], atoms[7])
-			case "tx-commit":
-				requireArgs(name, atoms, 8)
-				f.txCommit(name, sid, atoms[6], atoms[7])
-			case "tx-rollback":
-				requireArgs(name, atoms, 7)
-				f.txRollback(name, sid, atoms[6])
+			panic("failed parsing: '" + line + "'")
+		} else {
+			switch atoms[0] {
+			case "report":
+				name := atoms[FID_NAME]
+				sid := atoms[FID_SID]
+				switch name {
+				case "link-connect":
+					if requireArgs(name, atoms, 10) {
+						f.linkConnect(name, sid, atoms[6], atoms[7], atoms[8], atoms[9])
+					}
+				case "link-disconnect":
+					f.linkDisconnect(name, sid)
+				case "link-auth":
+					if requireArgs(name, atoms, 8) {
+						f.linkAuth(name, sid, atoms[6], atoms[7])
+					}
+				case "tx-reset":
+					if requireArgs(name, atoms, 7) {
+						f.txReset(name, sid, atoms[6])
+					}
+				case "tx-begin":
+					if requireArgs(name, atoms, 7) {
+						f.txBegin(name, sid, atoms[6])
+					}
+				case "tx-mail":
+					if requireArgs(name, atoms, 9) {
+						f.txMail(name, sid, atoms[6], atoms[7], atoms[8])
+					}
+				case "tx-rcpt":
+					if requireArgs(name, atoms, 9) {
+						f.txRcpt(name, sid, atoms[6], atoms[7], atoms[8])
+					}
+				case "tx-data":
+					if requireArgs(name, atoms, 8) {
+						f.txData(name, sid, atoms[6], atoms[7])
+					}
+				case "tx-commit":
+					if requireArgs(name, atoms, 8) {
+						f.txCommit(name, sid, atoms[6], atoms[7])
+					}
+				case "tx-rollback":
+					if requireArgs(name, atoms, 7) {
+						f.txRollback(name, sid, atoms[6])
+					}
+				}
+			case "filter":
+				phase := atoms[FID_NAME]
+				sid := atoms[FID_SID]
+				token := atoms[FID_TOKEN]
+				switch phase {
+				case "data-line":
+					if requireArgs(phase, atoms, 8) {
+						f.dataLine(phase, sid, token, lastAtom(line, atoms, 7))
+					}
+				}
+			default:
+				Warning("unexpected input: %v", line)
 			}
-		case "filter":
-			phase := atoms[FID_NAME]
-			sid := atoms[FID_SID]
-			token := atoms[FID_TOKEN]
-			switch phase {
-			case "data-line":
-				requireArgs(phase, atoms, 8)
-				f.dataLine(phase, sid, token, lastAtom(line, atoms, 7))
-			}
-		default:
-			log.Fatal(Fatalf("unexpected input: %v", line))
 		}
 	}
 	err := f.input.Err()
 	if err != nil {
-		log.Fatal(Fatalf("input failed with: %v", err))
+		Warning("input failed with: %v", err)
 	}
-	log.Printf("%s: unexpected EOF on stdin\n", f.Name)
+	Warning("%s: unexpected EOF on stdin", f.Name)
 }
 
 func (f *Filter) getSession(name, sid string) *Session {
 	session, ok := f.Sessions[sid]
 	if !ok {
-		log.Fatal(Fatalf("%s: unknown session: %s\n", name, sid))
+		Warning("%s: unknown session: %s", name, sid)
+		return nil
+
 	}
 	return session
 }
 
 func (f *Filter) getSessionMessage(name, sid, mid string) (*Session, *Message) {
 	session := f.getSession(name, sid)
+	if session == nil {
+		return nil, nil
+	}
 	message, ok := session.Messages[mid]
 	if !ok {
-		log.Fatal(Fatalf("%s: session %s unknown messageId: %s\n", name, sid, mid))
+		Warning("%s: session %s unknown messageId: %s", name, sid, mid)
+		return nil, nil
 	}
 	return session, message
 }
@@ -306,7 +325,8 @@ func (f *Filter) linkConnect(name, sid, rdns, confirmed, src, dst string) {
 	}
 	_, ok := f.Sessions[sid]
 	if ok {
-		log.Fatal(Fatalf("%s.%s: existing session: %s", f.Name, name, sid))
+		Warning("%s.%s: existing session: %s", f.Name, name, sid)
+		return
 	}
 	f.Sessions[sid] = NewSession(sid, rdns, confirmed == "pass", src, dst)
 }
@@ -324,7 +344,7 @@ func (f *Filter) linkAuth(name, sid, result, username string) {
 		log.Printf("%s.%s: session=%s result=%s username=%s\n", f.Name, name, sid, result, username)
 	}
 	session := f.getSession(name, sid)
-	if result == "pass" {
+	if session != nil && result == "pass" {
 		session.AuthorizedUser = username
 	}
 }
@@ -334,7 +354,9 @@ func (f *Filter) txReset(name, sid, mid string) {
 		log.Printf("%s.%s: session=%s message=%s\n", f.Name, name, sid, mid)
 	}
 	session, _ := f.getSessionMessage(name, sid, mid)
-	session.Messages[mid] = NewMessage(mid)
+	if session != nil {
+		session.Messages[mid] = NewMessage(mid)
+	}
 }
 
 func (f *Filter) txBegin(name, sid, mid string) {
@@ -342,9 +364,13 @@ func (f *Filter) txBegin(name, sid, mid string) {
 		log.Printf("%s %s: session=%s message=%s\n", f.Name, name, sid, mid)
 	}
 	session := f.getSession(name, sid)
+	if session == nil {
+		return
+	}
 	_, ok := session.Messages[mid]
 	if ok {
-		log.Fatal(Fatalf("%s: in session %s for existing message %s", name, sid, mid))
+		Warning("%s: unexpected tx-begin in session %s for existing message %s", name, sid, mid)
+		return
 	}
 	session.Messages[mid] = NewMessage(mid)
 }
@@ -354,7 +380,7 @@ func (f *Filter) txMail(name, sid, mid, result, address string) {
 		log.Printf("%s.%s: session=%s message=%s\n", f.Name, name, sid, mid)
 	}
 	_, message := f.getSessionMessage(name, sid, mid)
-	if result == "ok" {
+	if message != nil && result == "ok" {
 		message.From = address
 	}
 }
@@ -364,7 +390,7 @@ func (f *Filter) txRcpt(name, sid, mid, result, address string) {
 		log.Printf("%s.%s: session=%s message=%s result=%s address=%s\n", f.Name, name, sid, mid, result, address)
 	}
 	_, message := f.getSessionMessage(name, sid, mid)
-	if result == "ok" {
+	if message != nil && result == "ok" {
 		message.To = append(message.To, address)
 	}
 }
@@ -374,7 +400,7 @@ func (f *Filter) txData(name, sid, mid, result string) {
 		log.Printf("%s.%s: session=%s message=%s\n", f.Name, name, sid, mid)
 	}
 	session, message := f.getSessionMessage(name, sid, mid)
-	if result == "ok" {
+	if session != nil && message != nil && result == "ok" {
 		session.DataMessage = mid
 		message.State = "data"
 		message.InHeader = true
@@ -386,7 +412,9 @@ func (f *Filter) txCommit(name, sid, mid, size string) {
 		log.Printf("%s.%s: session=%s message=%s size=%s\n", f.Name, name, sid, mid, size)
 	}
 	_, message := f.getSessionMessage(name, sid, mid)
-	message.State = "commit"
+	if message != nil {
+		message.State = "commit"
+	}
 }
 
 func (f *Filter) txRollback(name, sid, mid string) {
@@ -394,15 +422,19 @@ func (f *Filter) txRollback(name, sid, mid string) {
 		log.Printf("%s.%s: session=%s message=%s\n", f.Name, name, sid, mid)
 	}
 	_, message := f.getSessionMessage(name, sid, mid)
-	message.State = "rollback"
+	if message != nil {
+		message.State = "rollback"
+	}
 }
 
 func (f *Filter) sessionTimeout(name, sid string) {
 	if f.verbose {
 		log.Printf("%s.%s: session=%s\n", f.Name, name, sid)
 	}
-	f.getSession(name, sid)
-	delete(f.Sessions, sid)
+	session := f.getSession(name, sid)
+	if session != nil {
+		delete(f.Sessions, sid)
+	}
 }
 
 func (f *Filter) recipientMatches(name string, message *Message) bool {
@@ -436,27 +468,29 @@ func (f *Filter) dataLine(name, sid, token, line string) {
 	}
 	lines := []string{line}
 	session := f.getSession(name, sid)
-	_, message := f.getSessionMessage(name, sid, session.DataMessage)
-	if message.InHeader {
-		// if at end of message header lines
-		if strings.TrimSpace(line) == "" {
-			// add filter headers
-			if f.recipientMatches(name, message) {
-				lines = []string{}
-				for key, value := range f.Headers {
-					log.Printf("%s.%s: adding header '%s: %s'\n", f.Name, name, key, value)
-					lines = append(lines, fmt.Sprintf("%s: %s", key, value))
+	if session != nil {
+		_, message := f.getSessionMessage(name, sid, session.DataMessage)
+		if message != nil && message.InHeader {
+			// if at end of message header lines
+			if strings.TrimSpace(line) == "" {
+				// add filter headers
+				if f.recipientMatches(name, message) {
+					lines = []string{}
+					for key, value := range f.Headers {
+						log.Printf("%s.%s: adding header '%s: %s'\n", f.Name, name, key, value)
+						lines = append(lines, fmt.Sprintf("%s: %s", key, value))
+					}
+					lines = append(lines, line)
 				}
-				lines = append(lines, line)
+				// mark end of header
+				message.InHeader = false
 			}
-			// mark end of header
-			message.InHeader = false
 		}
 	}
 	for _, oline := range lines {
 		_, err := fmt.Fprintf(f.output, "filter-dataline|%s|%s|%s\n", sid, token, oline)
 		if err != nil {
-			log.Fatal(Fatal(err))
+			Warning("failed writing data line: %v", err)
 		}
 	}
 }
